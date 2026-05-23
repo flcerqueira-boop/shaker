@@ -1,0 +1,738 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SHAKER — Felipe Cerqueira</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:#F5F0E8;color:#1C1208;font-family:'Georgia',serif;min-height:100vh;}
+  .drink-card:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(44,26,8,.13)!important;}
+  .modal-scroll::-webkit-scrollbar{width:4px;}
+  .modal-scroll::-webkit-scrollbar-track{background:#F5F0E8;}
+  .modal-scroll::-webkit-scrollbar-thumb{background:#D4B896;border-radius:4px;}
+  input::placeholder,textarea::placeholder{color:#C4A882;}
+  textarea{font-family:'Georgia',serif;}
+  select{appearance:none;}
+  select option{background:#fff;color:#1C1208;}
+  button:active{opacity:.8;}
+  .ac-item:hover{background:#FFF0D0;}
+  @media(max-width:560px){.drink-card{min-width:0;}}
+  .loading{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;}
+  .loading-text{color:#9A7A5A;font-size:14px;letter-spacing:2px;text-transform:uppercase;}
+  .spinner{width:32px;height:32px;border:2px solid #D4B896;border-top-color:#C4922A;border-radius:50%;animation:spin .8s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+<div id="root"><div class="loading"><div class="spinner"></div><div class="loading-text">Carregando...</div></div></div>
+
+<!-- Firebase -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyApc5MaWErszNjHUhV2TA84j0A-zubRd3E",
+  authDomain: "shaker-drinks-7d250.firebaseapp.com",
+  projectId: "shaker-drinks-7d250",
+  storageBucket: "shaker-drinks-7d250.firebasestorage.app",
+  messagingSenderId: "611163594118",
+  appId: "1:611163594118:web:3c05d2f3732d2b67e7a007"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+window._db = db;
+window._fbGet = async (key) => {
+  try {
+    const snap = await getDoc(doc(db, "shaker", key));
+    return snap.exists() ? snap.data().value : null;
+  } catch(e) { return null; }
+};
+window._fbSet = async (key, value) => {
+  try { await setDoc(doc(db, "shaker", key), { value }); } catch(e) {}
+};
+window._fbReady = true;
+window.dispatchEvent(new Event("firebase-ready"));
+</script>
+
+<!-- React + Babel -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useCallback } = React;
+
+// ─── Firebase helpers ─────────────────────────────────────────────────────────
+async function waitFirebase() {
+  if (window._fbReady) return;
+  await new Promise(r => window.addEventListener("firebase-ready", r, { once: true }));
+}
+async function dbGet(key) {
+  await waitFirebase();
+  return window._fbGet(key);
+}
+async function dbSet(key, value) {
+  await waitFirebase();
+  return window._fbSet(key, value);
+}
+
+// ─── Data ─────────────────────────────────────────────────────────────────────
+const CATEGORIES = ["Clássico","Autoral","Tropical","Aperitivo","Digestivo","Long Drink","Shot","Sem Álcool"];
+const TECHNIQUES = [
+  {value:"shaken", label:"Batido",        emoji:"🍸", desc:"Shaker com gelo"},
+  {value:"stirred",label:"Mexido",        emoji:"🥄", desc:"Mixing glass com gelo"},
+  {value:"built",  label:"Montado",       emoji:"🧊", desc:"Direto no copo"},
+  {value:"blended",label:"Liquidificado", emoji:"🌀", desc:"Gelo no liquidificador"},
+  {value:"rolled", label:"Rolado",        emoji:"↔️", desc:"Transferido entre copos"},
+];
+const GLASSES = [
+  "Copo Rocks (Old Fashioned)","Copo Highball","Copo Collins","Taça Coquetel (Martini)",
+  "Taça Coupe","Taça de Vinho","Taça Balão","Taça Champagne (Flute)",
+  "Caneca de Cobre (Moscow Mule)","Copo Shot","Tulipa","Nick & Nora","Copo Tiki","Jarro","Outro",
+];
+const GARNISHES_COMMON = [
+  "Fatia de Limão","Twist de Limão Siciliano","Twist de Laranja","Raspas de Laranja",
+  "Fatia de Laranja","Azeitona","Cereja Maraschino","Hortelã Fresca","Sal na Borda",
+  "Açúcar na Borda","Espuma","Pimenta do Reino","Canela em Pó","Anis Estrelado",
+  "Flor Comestível","Desidratado de Limão","Desidratado de Laranja","Fatia de Abacaxi",
+  "Noz-moscada Ralada","Folha de Louro","Espeto de Frutas","Sem Guarnição",
+];
+const INGREDIENT_LIST = [
+  "Gin","Vodka","Rum Branco","Rum Escuro","Rum Envelhecido","Tequila Blanco","Tequila Reposado",
+  "Bourbon","Whisky Escocês","Whisky Irlandês","Rye Whisky",
+  "Campari","Aperol","Vermute Seco","Vermute Doce","Lillet Blanc","Suze",
+  "Cointreau","Triple Sec","Curaçao Azul","Grand Marnier",
+  "Chartreuse Verde","Chartreuse Amarelo","Bénédictine","Drambuie",
+  "Suco de Limão","Suco de Laranja","Suco de Abacaxi","Suco de Maracujá","Suco de Toranja",
+  "Xarope Simples","Xarope de Mel","Xarope de Grenadine","Xarope de Orgeat","Xarope de Agave",
+  "Água Tônica","Água com Gás","Ginger Beer","Ginger Ale","Refrigerante de Cola","Soda Cítrica",
+  "Bitter Angostura","Bitter Orange","Bitter Peychaud's","Bitter Mole",
+  "Maraschino","Absinthe","Pastis","Fernet-Branca",
+  "Cachaça","Pisco","Mezcal","Sake",
+  "Licor de Café","Amaretto","Baileys","Licor de Framboesa","Midori",
+  "Creme de Leite","Leite de Coco","Clara de Ovo","Gema de Ovo","Leite Integral",
+  "Hortelã Fresca","Limão Taiti","Limão Siciliano","Laranja","Maracujá","Abacaxi","Melancia","Morango",
+  "Sal","Açúcar","Pimenta Caiena","Molho Tabasco","Molho Worcestershire","Aipo",
+];
+const COLOR_SWATCHES = [
+  "#9B2335","#C8860A","#D4A017","#2D7A3A","#1A6B8A","#7B3F8C",
+  "#E8561A","#B5451B","#3D6B99","#1A8C6B","#8C6B1A","#4A4A4A",
+];
+const CLASSICS_LIBRARY = [
+  {name:"Old Fashioned",category:"Clássico",color:"#8C4A00",technique:"stirred",glass:"Copo Rocks (Old Fashioned)",garnish:"Twist de Laranja",ingredients:["Bourbon","Xarope Simples","Bitter Angostura"],amounts:["60ml","5ml","2 dashes"],instructions:"Coloque o açúcar e o bitter no copo, misture bem. Adicione o bourbon e gelo em cubo grande. Mexa delicadamente por 30 segundos. Finalize com twist de laranja."},
+  {name:"Negroni",category:"Aperitivo",color:"#9B2335",technique:"stirred",glass:"Copo Rocks (Old Fashioned)",garnish:"Raspas de Laranja",ingredients:["Gin","Campari","Vermute Doce"],amounts:["30ml","30ml","30ml"],instructions:"Mexa todos os ingredientes com gelo em mixing glass por 30 segundos. Coe em copo rocks com pedra grande de gelo. Finalize com raspas de laranja."},
+  {name:"Martini Clássico",category:"Clássico",color:"#2A4A6A",technique:"stirred",glass:"Taça Coquetel (Martini)",garnish:"Azeitona",ingredients:["Gin","Vermute Seco"],amounts:["60ml","10ml"],instructions:"Mexa gin e vermute com gelo em mixing glass por 30 segundos. Coe na taça gelada. Decore com azeitona ou twist de limão."},
+  {name:"Mojito",category:"Clássico",color:"#2D7A3A",technique:"built",glass:"Copo Highball",garnish:"Hortelã Fresca",ingredients:["Rum Branco","Suco de Limão","Xarope Simples","Hortelã Fresca","Água com Gás"],amounts:["50ml","25ml","15ml","8 folhas","completar"],instructions:"Macere levemente a hortelã com o xarope no copo. Adicione rum, limão e gelo crushed. Complete com água com gás e mexa delicadamente com palha."},
+  {name:"Daiquiri",category:"Clássico",color:"#B5451B",technique:"shaken",glass:"Taça Coupe",garnish:"Fatia de Limão",ingredients:["Rum Branco","Suco de Limão","Xarope Simples"],amounts:["60ml","30ml","15ml"],instructions:"Shake vigoroso com gelo por 12 segundos. Coe na taça coupe gelada. Não leva gelo no copo."},
+  {name:"Margarita",category:"Clássico",color:"#C8A800",technique:"shaken",glass:"Taça Coupe",garnish:"Sal na Borda",ingredients:["Tequila Blanco","Cointreau","Suco de Limão"],amounts:["50ml","25ml","25ml"],instructions:"Passe limão na borda da taça e mergulhe no sal. Shake todos os ingredientes com gelo. Coe na taça."},
+  {name:"Whisky Sour",category:"Clássico",color:"#C8860A",technique:"shaken",glass:"Copo Rocks (Old Fashioned)",garnish:"Cereja Maraschino",ingredients:["Bourbon","Suco de Limão","Xarope Simples","Clara de Ovo"],amounts:["60ml","30ml","15ml","1 unidade"],instructions:"Dry shake todos os ingredientes sem gelo por 15 segundos. Adicione gelo e shake novamente. Coe em copo rocks. Decore com bitter em cima da espuma."},
+  {name:"Aperol Spritz",category:"Aperitivo",color:"#E8561A",technique:"built",glass:"Taça Balão",garnish:"Fatia de Laranja",ingredients:["Aperol","Água com Gás","Vermute Seco"],amounts:["60ml","90ml","30ml"],instructions:"Em taça balão com gelo, adicione o vinho branco seco, o Aperol e complete com água com gás. Mexa delicadamente. Decore com fatia de laranja."},
+  {name:"Moscow Mule",category:"Long Drink",color:"#4A7A3A",technique:"built",glass:"Caneca de Cobre (Moscow Mule)",garnish:"Fatia de Limão",ingredients:["Vodka","Ginger Beer","Suco de Limão"],amounts:["50ml","150ml","15ml"],instructions:"Na caneca de cobre com gelo, adicione a vodka e o suco de limão. Complete com ginger beer gelada. Mexa suavemente."},
+  {name:"Cosmopolitan",category:"Clássico",color:"#C8305A",technique:"shaken",glass:"Taça Coquetel (Martini)",garnish:"Twist de Limão Siciliano",ingredients:["Vodka","Cointreau","Suco de Limão","Xarope de Grenadine"],amounts:["45ml","15ml","30ml","15ml"],instructions:"Shake vigoroso com gelo. Coe na taça de martini gelada. Finalize com twist de limão siciliano."},
+  {name:"Manhattan",category:"Clássico",color:"#7A1A1A",technique:"stirred",glass:"Taça Coupe",garnish:"Cereja Maraschino",ingredients:["Rye Whisky","Vermute Doce","Bitter Angostura"],amounts:["60ml","30ml","2 dashes"],instructions:"Mexa todos os ingredientes com gelo em mixing glass por 30 segundos. Coe na taça coupe gelada. Decore com cereja ao maraschino."},
+  {name:"Pisco Sour",category:"Clássico",color:"#D4C060",technique:"shaken",glass:"Taça Coupe",garnish:"Bitter Angostura",ingredients:["Pisco","Suco de Limão","Xarope Simples","Clara de Ovo"],amounts:["60ml","30ml","20ml","1 unidade"],instructions:"Dry shake sem gelo por 15 segundos. Adicione gelo e shake novamente. Coe na taça. Aplique 3 gotas de Angostura na espuma."},
+  {name:"Caipirinha",category:"Clássico",color:"#6A8A2A",technique:"built",glass:"Copo Rocks (Old Fashioned)",garnish:"Fatia de Limão",ingredients:["Cachaça","Limão Taiti","Açúcar"],amounts:["60ml","1 unidade","2 col. chá"],instructions:"Corte o limão em quartos, remova a parte branca central. Macere com o açúcar. Adicione cachaça e gelo. Misture bem."},
+  {name:"Tom Collins",category:"Long Drink",color:"#B8D040",technique:"built",glass:"Copo Collins",garnish:"Fatia de Limão",ingredients:["Gin","Suco de Limão","Xarope Simples","Água com Gás"],amounts:["50ml","30ml","15ml","completar"],instructions:"Shake gin, limão e xarope com gelo. Coe em copo collins com gelo. Complete com água com gás."},
+  {name:"Gimlet",category:"Clássico",color:"#3A7A2A",technique:"shaken",glass:"Taça Coupe",garnish:"Twist de Limão Siciliano",ingredients:["Gin","Suco de Limão","Xarope Simples"],amounts:["60ml","22ml","22ml"],instructions:"Shake vigoroso com gelo. Coe na taça coupe gelada."},
+  {name:"Paloma",category:"Long Drink",color:"#E85080",technique:"built",glass:"Copo Highball",garnish:"Sal na Borda",ingredients:["Tequila Blanco","Suco de Toranja","Suco de Limão","Xarope Simples","Água com Gás"],amounts:["50ml","90ml","15ml","10ml","completar"],instructions:"Sal na borda do copo. Adicione tequila, suco de toranja, limão e xarope sobre gelo. Complete com água com gás."},
+  {name:"Dark 'n' Stormy",category:"Long Drink",color:"#3A1A00",technique:"built",glass:"Copo Highball",garnish:"Fatia de Limão",ingredients:["Rum Escuro","Ginger Beer","Suco de Limão"],amounts:["60ml","120ml","15ml"],instructions:"Preencha o copo com gelo. Adicione limão e ginger beer. Float o rum escuro por cima despejando sobre as costas de uma colher."},
+  {name:"Espresso Martini",category:"Clássico",color:"#2A1A08",technique:"shaken",glass:"Taça Coquetel (Martini)",garnish:"3 Grãos de Café",ingredients:["Vodka","Licor de Café","Xarope Simples"],amounts:["50ml","25ml","10ml"],instructions:"Shake muito vigoroso com gelo e 1 dose de espresso quente (30ml). Coe na taça gelada para obter boa espuma. Decore com 3 grãos de café."},
+  {name:"Sidecar",category:"Clássico",color:"#C88020",technique:"shaken",glass:"Taça Coupe",garnish:"Açúcar na Borda",ingredients:["Rum Envelhecido","Cointreau","Suco de Limão"],amounts:["50ml","25ml","25ml"],instructions:"Açúcar na borda da taça. Shake vigoroso com gelo. Coe na taça."},
+  {name:"Clover Club",category:"Clássico",color:"#C83060",technique:"shaken",glass:"Taça Coupe",garnish:"Hortelã Fresca",ingredients:["Gin","Suco de Limão","Xarope de Grenadine","Clara de Ovo"],amounts:["50ml","25ml","15ml","1 unidade"],instructions:"Dry shake sem gelo para emulsionar. Adicione gelo e shake novamente. Coe na taça coupe."},
+  {name:"Last Word",category:"Clássico",color:"#3A7A1A",technique:"shaken",glass:"Taça Coupe",garnish:"Cereja Maraschino",ingredients:["Gin","Chartreuse Verde","Maraschino","Suco de Limão"],amounts:["22ml","22ml","22ml","22ml"],instructions:"Partes iguais de todos os ingredientes. Shake vigoroso com gelo. Coe na taça coupe."},
+  {name:"Paper Plane",category:"Clássico",color:"#D46010",technique:"shaken",glass:"Taça Coupe",garnish:"Sem Guarnição",ingredients:["Bourbon","Aperol","Amaretto","Suco de Limão"],amounts:["22ml","22ml","22ml","22ml"],instructions:"Partes iguais de todos os ingredientes. Shake vigoroso com gelo. Coe na taça coupe."},
+  {name:"Aviation",category:"Clássico",color:"#6A50C0",technique:"shaken",glass:"Taça Coupe",garnish:"Cereja Maraschino",ingredients:["Gin","Maraschino","Suco de Limão","Curaçao Azul"],amounts:["50ml","15ml","22ml","7ml"],instructions:"Shake vigoroso com gelo. Coe na taça coupe. A cor deve ser levemente lilás."},
+  {name:"Bee's Knees",category:"Clássico",color:"#C8A000",technique:"shaken",glass:"Taça Coupe",garnish:"Twist de Limão Siciliano",ingredients:["Gin","Suco de Limão","Xarope de Mel"],amounts:["60ml","22ml","22ml"],instructions:"Shake vigoroso com gelo. Coe na taça coupe gelada."},
+  {name:"Penicillin",category:"Clássico",color:"#C8A840",technique:"shaken",glass:"Copo Rocks (Old Fashioned)",garnish:"Desidratado de Limão",ingredients:["Whisky Escocês","Suco de Limão","Xarope de Mel","Xarope de Gengibre"],amounts:["60ml","22ml","22ml","10ml"],instructions:"Shake com gelo, coe em copo rocks. Float de whisky defumado por cima. Decore com cristalizado de gengibre."},
+  {name:"Jungle Bird",category:"Tropical",color:"#8A2000",technique:"shaken",glass:"Copo Tiki",garnish:"Fatia de Abacaxi",ingredients:["Rum Escuro","Campari","Suco de Abacaxi","Suco de Limão","Xarope Simples"],amounts:["45ml","22ml","45ml","15ml","15ml"],instructions:"Shake vigoroso com gelo. Coe em copo tiki com gelo. Decore com fatia de abacaxi."},
+];
+const DEFAULT_BAR = ["Gin","Campari","Vermute Doce","Rum Branco","Bourbon","Suco de Limão","Xarope Simples","Água com Gás","Hortelã Fresca","Aperol","Vermute Seco","Limão Taiti"];
+
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+const Ico = ({d, size=18, stroke="currentColor", sw="1.8", fill="none"}) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    {typeof d==="string"?<path d={d}/>:d}
+  </svg>
+);
+const IC = {
+  plus:   <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>,
+  x:      <><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></>,
+  search: <><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></>,
+  bottle: <><path d="M9 2h6v2.5L17 8v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8l2-3.5V2z"/><line x1="7" y1="13" x2="17" y2="13"/></>,
+  check:  <polyline points="20 6 9 17 4 12"/>,
+  trash:  <><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></>,
+  edit:   "M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
+  magic:  <><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2L19 5"/><path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/></>,
+  filter: <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>,
+  book:   <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>,
+};
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
+const S = {
+  root:{minHeight:"100vh",background:"#F5F0E8",color:"#1C1208",fontFamily:"'Georgia',serif"},
+  header:{background:"#2C1A08",borderBottom:"3px solid #C4922A",position:"sticky",top:0,zIndex:50},
+  headerInner:{maxWidth:960,margin:"0 auto",padding:"0 20px",display:"flex",alignItems:"center",justifyContent:"space-between",height:64},
+  logo:{display:"flex",alignItems:"center",gap:12},
+  logoMark:{fontSize:26,color:"#C4922A",lineHeight:1},
+  logoTitle:{fontSize:18,letterSpacing:5,color:"#F5F0E8",lineHeight:1},
+  logoSub:{fontSize:9,letterSpacing:1.5,color:"#A08060",marginTop:3},
+  nav:{display:"flex",gap:4},
+  navBtn:{display:"flex",alignItems:"center",gap:6,padding:"6px 14px",borderRadius:8,border:"1px solid transparent",background:"transparent",color:"#A08060",cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif"},
+  navBtnActive:{background:"#3D2610",color:"#C4922A",border:"1px solid #5A3A18"},
+  main:{maxWidth:960,margin:"0 auto",padding:"24px 20px 60px"},
+  toolbar:{display:"flex",gap:10,marginBottom:16,alignItems:"center"},
+  searchWrap:{flex:1,display:"flex",alignItems:"center",gap:10,background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:10,padding:"0 14px"},
+  searchInput:{flex:1,background:"transparent",border:"none",outline:"none",color:"#1C1208",fontSize:14,padding:"10px 0",fontFamily:"'Georgia',serif"},
+  clearBtn:{background:"none",border:"none",cursor:"pointer",padding:4,display:"flex"},
+  addBtn:{display:"flex",alignItems:"center",gap:8,padding:"10px 16px",background:"#C4922A",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"'Georgia',serif",whiteSpace:"nowrap"},
+  chipRow:{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10},
+  chip:{padding:"5px 12px",borderRadius:20,border:"1.5px solid #D4B896",background:"#FFF8EE",color:"#7A5C3A",cursor:"pointer",fontSize:12,fontFamily:"'Georgia',serif",display:"flex",alignItems:"center",gap:5},
+  chipActive:{background:"#C4922A",border:"1.5px solid #C4922A",color:"#fff",fontWeight:700},
+  ingFilterPanel:{background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:12,padding:16,marginBottom:16},
+  ingGrid:{display:"flex",flexWrap:"wrap",gap:8},
+  ingTag:{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:8,color:"#7A5C3A",cursor:"pointer",fontSize:12,fontFamily:"'Georgia',serif"},
+  ingTagActive:{background:"#C4922A",border:"1.5px solid #C4922A",color:"#fff",fontWeight:700},
+  barTag:{display:"flex",alignItems:"center",gap:8,padding:"5px 10px 5px 14px",background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:8,color:"#2C1A08",fontSize:13,fontFamily:"'Georgia',serif"},
+  barTagRemove:{background:"none",border:"none",cursor:"pointer",display:"flex",padding:2},
+  grid:{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:14,marginTop:8},
+  card:{background:"#fff",borderRadius:12,overflow:"hidden",cursor:"pointer",border:"1.5px solid",transition:"transform .2s,box-shadow .2s",boxShadow:"0 2px 8px rgba(44,26,8,.07)"},
+  cardBand:{height:118,position:"relative",display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"10px 12px"},
+  cardBandOverlay:{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.72) 0%,transparent 65%)"},
+  cardName:{position:"relative",zIndex:1,fontSize:15,fontWeight:700,color:"#fff"},
+  cardCat:{position:"relative",zIndex:1,fontSize:10,color:"rgba(255,255,255,.7)",letterSpacing:1.5,textTransform:"uppercase"},
+  makeableBadge:{position:"absolute",top:8,right:8,zIndex:2,background:"#1A5C30",color:"#A8EDBA",fontSize:9,padding:"3px 7px",borderRadius:20,fontWeight:700},
+  techBadge:{position:"absolute",top:8,left:8,zIndex:2,background:"rgba(0,0,0,.55)",color:"#fff",fontSize:10,padding:"2px 7px",borderRadius:20},
+  cardBody:{padding:"9px 12px",display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8},
+  cardIngs:{fontSize:11,color:"#9A7A5A"},
+  cardGlass:{fontSize:10,color:"#B89A7A",marginTop:3},
+  cardFavs:{display:"flex",gap:2,flexShrink:0},
+  favBtn:{background:"none",border:"none",cursor:"pointer",fontSize:15,padding:"1px 3px"},
+  sectionHeader:{display:"flex",alignItems:"center",gap:10,marginBottom:20,paddingBottom:14,borderBottom:"1.5px solid #D4B896"},
+  empty:{textAlign:"center",padding:"60px 20px"},
+  divider:{height:1.5,background:"#D4B896"},
+  infoBadge:{display:"flex",alignItems:"center",gap:10,background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:10,padding:"8px 12px",flex:"1 1 140px"},
+  infoBadgeTitle:{fontSize:10,color:"#9A7A5A",letterSpacing:1,textTransform:"uppercase",marginBottom:2},
+  infoBadgeSub:{fontSize:12,color:"#2C1A08",fontWeight:600},
+  techChip:{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",background:"#FFF8EE",border:"1.5px solid #D4B896",borderRadius:10,cursor:"pointer",fontFamily:"'Georgia',serif",textAlign:"left"},
+  techChipActive:{background:"#FFF0D0",border:"1.5px solid #C4922A"},
+  classicRow:{display:"flex",alignItems:"center",gap:12,padding:"10px 12px 10px 18px",background:"#fff",border:"1.5px solid",borderRadius:10,position:"relative",overflow:"hidden",boxShadow:"0 1px 4px rgba(44,26,8,.06)"},
+  importBtn:{background:"#C4922A",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"'Georgia',serif",whiteSpace:"nowrap",flexShrink:0},
+  overlay:{position:"fixed",inset:0,background:"rgba(28,18,8,.7)",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:16},
+  modalBox:{background:"#FBF6EE",borderRadius:16,width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 24px 80px rgba(44,26,8,.35)",position:"relative"},
+  modalHeader:{position:"relative"},
+  bandFull:{height:155,display:"flex",flexDirection:"column",justifyContent:"flex-end",padding:"20px 24px",position:"relative"},
+  bandFullOverlay:{position:"absolute",inset:0,background:"linear-gradient(to top,rgba(0,0,0,.8) 0%,transparent 60%)"},
+  modalDrinkName:{position:"relative",zIndex:1,fontSize:22,fontWeight:700,color:"#fff"},
+  modalDrinkCat:{position:"relative",zIndex:1,fontSize:10,color:"rgba(255,255,255,.7)",letterSpacing:2,textTransform:"uppercase"},
+  modalClose:{position:"absolute",top:12,right:12,background:"rgba(0,0,0,.45)",border:"none",borderRadius:8,padding:8,cursor:"pointer",zIndex:10,display:"flex"},
+  favChip:{padding:"6px 14px",borderRadius:20,cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif"},
+  missingBanner:{background:"#FFF3E0",border:"1.5px solid #FFAB40",borderRadius:8,padding:"9px 13px",fontSize:13,color:"#7A3800",marginBottom:16},
+  viewSection:{marginBottom:20},
+  viewLabel:{fontSize:10,letterSpacing:2,color:"#9A7A5A",textTransform:"uppercase",marginBottom:10},
+  viewIng:{display:"flex",gap:12,alignItems:"center",padding:"7px 0",borderBottom:"1px solid #E8DCC8",fontSize:14,color:"#1C1208"},
+  editBtn:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",background:"#FFF8EE",border:"1.5px solid #C4922A",borderRadius:10,color:"#8A5C18",cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif",fontWeight:600},
+  delBtn:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",background:"#FFF8EE",border:"1.5px solid #E88080",borderRadius:10,color:"#C03030",cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif"},
+  label:{display:"block",fontSize:10,letterSpacing:2,color:"#9A7A5A",textTransform:"uppercase",marginBottom:8,marginTop:2},
+  input:{width:"100%",background:"#fff",border:"1.5px solid #D4B896",borderRadius:8,padding:"9px 12px",color:"#1C1208",fontSize:14,fontFamily:"'Georgia',serif",outline:"none",boxSizing:"border-box",marginBottom:14},
+  removeBtn:{background:"none",border:"1.5px solid #E8C8C8",borderRadius:8,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",width:38,height:38,flexShrink:0},
+  ghostBtn:{display:"flex",alignItems:"center",gap:8,background:"none",border:"1.5px dashed #D4B896",borderRadius:8,padding:"8px 14px",color:"#9A7A5A",cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif"},
+  autocomplete:{position:"absolute",top:"100%",left:0,right:0,background:"#fff",border:"1.5px solid #D4B896",borderRadius:8,zIndex:200,overflow:"hidden",boxShadow:"0 4px 16px rgba(44,26,8,.12)"},
+  autocompleteItem:{padding:"9px 14px",fontSize:13,cursor:"pointer",color:"#1C1208",fontFamily:"'Georgia',serif"},
+};
+
+// ─── App ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState(0);
+  const [drinks, setDrinks] = useState([]);
+  const [bar, setBar] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState(null);
+  const [classicsModal, setClassicsModal] = useState(false);
+  const [search, setSearch] = useState("");
+  const [filterCat, setFilterCat] = useState("Todos");
+  const [filterFav, setFilterFav] = useState("Todos");
+  const [filterIngs, setFilterIngs] = useState([]);
+  const [showIngFilter, setShowIngFilter] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const d = await dbGet("drinks");
+      const b = await dbGet("bar");
+      setDrinks(d ? JSON.parse(d) : []);
+      setBar(b ? JSON.parse(b) : DEFAULT_BAR);
+      setLoaded(true);
+    })();
+  }, []);
+
+  const persistDrinks = useCallback(async (ds) => {
+    setSaving(true);
+    await dbSet("drinks", JSON.stringify(ds));
+    setSaving(false);
+  }, []);
+  const persistBar = useCallback(async (b) => {
+    await dbSet("bar", JSON.stringify(b));
+  }, []);
+
+  const updateDrinks = (ds) => { setDrinks(ds); persistDrinks(ds); };
+  const updateBar = (b) => { setBar(b); persistBar(b); };
+
+  const saveDrink = (drink) => {
+    let ds;
+    if (drink.id && drinks.find(d => d.id === drink.id)) ds = drinks.map(d => d.id === drink.id ? drink : d);
+    else ds = [...drinks, { ...drink, id: Date.now() }];
+    updateDrinks(ds);
+    setModal(null);
+  };
+  const importClassic = (classic) => {
+    if (!drinks.find(d => d.name === classic.name)) {
+      const ds = [...drinks, { ...classic, id: Date.now()+Math.random(), favFelipe:false, favJoana:false, photo:"" }];
+      updateDrinks(ds);
+    }
+  };
+  const deleteDrink = (id) => { updateDrinks(drinks.filter(d => d.id !== id)); setModal(null); };
+  const toggleFav = (id, who) => { updateDrinks(drinks.map(d => d.id===id ? {...d,[who]:!d[who]} : d)); };
+
+  const filtered = useMemo(() => drinks.filter(d => {
+    const q = search.toLowerCase();
+    return (!q || d.name.toLowerCase().includes(q) || d.ingredients.some(i => i.toLowerCase().includes(q)))
+      && (filterCat==="Todos" || d.category===filterCat)
+      && (filterFav==="Todos" || (filterFav==="Felipe"&&d.favFelipe) || (filterFav==="Joana"&&d.favJoana))
+      && (filterIngs.length===0 || filterIngs.every(fi => d.ingredients.includes(fi)));
+  }), [drinks, search, filterCat, filterFav, filterIngs]);
+
+  const makeable = useMemo(() => drinks.filter(d => d.ingredients.every(i => bar.includes(i))), [drinks, bar]);
+
+  const tabs = [{label:"Drinks",icon:IC.magic},{label:"Meu Bar",icon:IC.bottle},{label:"Fazer Agora",icon:IC.check}];
+
+  if (!loaded) return <div className="loading"><div className="spinner"></div><div className="loading-text">Carregando...</div></div>;
+
+  return (
+    <div style={S.root}>
+      <header style={S.header}>
+        <div style={S.headerInner}>
+          <div style={S.logo}>
+            <span style={S.logoMark}>⟡</span>
+            <div>
+              <div style={S.logoTitle}>SHAKER</div>
+              <div style={S.logoSub}>Cocktail Collection — Felipe Cerqueira</div>
+            </div>
+          </div>
+          <nav style={S.nav}>
+            {tabs.map((t,i) => (
+              <button key={i} style={{...S.navBtn,...(tab===i?S.navBtnActive:{})}} onClick={()=>setTab(i)}>
+                <Ico d={t.icon} size={15} stroke={tab===i?"#C4922A":"#A08060"} sw="2"/>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      {saving && <div style={{background:"#C4922A",color:"#fff",fontSize:11,letterSpacing:1,textAlign:"center",padding:"4px",textTransform:"uppercase"}}>Salvando…</div>}
+
+      <main style={S.main}>
+        {tab===0 && (
+          <div>
+            <div style={S.toolbar}>
+              <div style={S.searchWrap}>
+                <Ico d={IC.search} size={16} stroke="#9A7A5A"/>
+                <input style={S.searchInput} placeholder="Buscar drink ou ingrediente…" value={search} onChange={e=>setSearch(e.target.value)}/>
+                {search && <button style={S.clearBtn} onClick={()=>setSearch("")}><Ico d={IC.x} size={14} stroke="#9A7A5A"/></button>}
+              </div>
+              <button style={{...S.addBtn,background:"#FFF0D0",color:"#8A5C18",border:"1.5px solid #C4922A"}} onClick={()=>setClassicsModal(true)}>
+                <Ico d={IC.book} size={15} stroke="#C4922A" sw="2"/>
+                <span style={{whiteSpace:"nowrap"}}>Clássicos</span>
+              </button>
+              <button style={S.addBtn} onClick={()=>setModal({mode:"edit",drink:null})}>
+                <Ico d={IC.plus} size={16} stroke="#fff" sw="2.5"/>
+                <span>Novo</span>
+              </button>
+            </div>
+
+            <div style={S.chipRow}>
+              {["Todos",...CATEGORIES].map(c=>(
+                <button key={c} style={{...S.chip,...(filterCat===c?S.chipActive:{})}} onClick={()=>setFilterCat(c)}>{c}</button>
+              ))}
+            </div>
+            <div style={S.chipRow}>
+              {[["Todos","Todos"],["⭐ Felipe","Felipe"],["💛 Joana","Joana"]].map(([lbl,val])=>(
+                <button key={val} style={{...S.chip,...(filterFav===val?S.chipActive:{})}} onClick={()=>setFilterFav(val)}>{lbl}</button>
+              ))}
+              <button style={{...S.chip,...(filterIngs.length>0?S.chipActive:{}),gap:5}} onClick={()=>setShowIngFilter(v=>!v)}>
+                <Ico d={IC.filter} size={12} stroke={filterIngs.length>0?"#fff":"#9A7A5A"} sw="2"/>
+                {filterIngs.length>0?`${filterIngs.length} ingrediente(s)`:"Filtrar por ingrediente"}
+              </button>
+              {filterIngs.length>0 && <button style={{...S.chip,background:"#FDEAEA",color:"#C03030",border:"1.5px solid #E88080"}} onClick={()=>setFilterIngs([])}>Limpar</button>}
+            </div>
+
+            {showIngFilter && (
+              <div style={S.ingFilterPanel}>
+                <div style={{fontSize:11,color:"#9A7A5A",marginBottom:10,letterSpacing:1,textTransform:"uppercase"}}>Selecione ingredientes para filtrar</div>
+                <div style={S.ingGrid}>
+                  {INGREDIENT_LIST.map(ing=>{
+                    const active=filterIngs.includes(ing);
+                    return <button key={ing} style={{...S.ingTag,...(active?S.ingTagActive:{})}} onClick={()=>setFilterIngs(p=>active?p.filter(i=>i!==ing):[...p,ing])}>
+                      {active&&<Ico d={IC.check} size={11} stroke="#fff" sw="3"/>}{ing}
+                    </button>;
+                  })}
+                </div>
+              </div>
+            )}
+
+            {drinks.length===0 ? (
+              <div style={S.empty}>
+                <div style={{fontSize:48,marginBottom:16}}>🍸</div>
+                <div style={{color:"#7A5C3A",marginBottom:6}}>Seu catálogo está vazio</div>
+                <div style={{color:"#9A7A5A",fontSize:13,marginBottom:20}}>Importe drinks clássicos ou crie o seu primeiro</div>
+                <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+                  <button style={{...S.addBtn,background:"#FFF0D0",color:"#8A5C18",border:"1.5px solid #C4922A"}} onClick={()=>setClassicsModal(true)}>
+                    <Ico d={IC.book} size={15} stroke="#C4922A"/> Biblioteca de Clássicos
+                  </button>
+                  <button style={S.addBtn} onClick={()=>setModal({mode:"edit",drink:null})}>
+                    <Ico d={IC.plus} size={16} stroke="#fff"/> Criar Drink
+                  </button>
+                </div>
+              </div>
+            ) : filtered.length===0 ? (
+              <div style={S.empty}><div style={{fontSize:36,marginBottom:12}}>🔍</div><div style={{color:"#9A7A5A"}}>Nenhum drink encontrado</div></div>
+            ) : (
+              <div style={S.grid}>
+                {filtered.map(d=>(
+                  <DrinkCard key={d.id} drink={d} barHas={d.ingredients.every(i=>bar.includes(i))}
+                    onView={()=>setModal({mode:"view",drink:d})} onToggleFav={toggleFav}/>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {tab===1 && <BarTab bar={bar} setBar={updateBar}/>}
+
+        {tab===2 && (
+          <div>
+            <div style={S.sectionHeader}>
+              <Ico d={IC.magic} size={18} stroke="#C4922A"/>
+              <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>
+                {makeable.length} drink{makeable.length!==1?"s":""} possíveis com o seu bar
+              </span>
+            </div>
+            {makeable.length===0 ? (
+              <div style={S.empty}>
+                <div style={{fontSize:40,marginBottom:12}}>🥃</div>
+                <div style={{color:"#9A7A5A"}}>Nenhum drink possível com o bar atual</div>
+                <div style={{color:"#9A7A5A",fontSize:13,marginTop:6}}>Adicione ingredientes na aba Meu Bar</div>
+              </div>
+            ) : (
+              <div style={S.grid}>
+                {makeable.map(d=>(
+                  <DrinkCard key={d.id} drink={d} barHas={true} highlight
+                    onView={()=>setModal({mode:"view",drink:d})} onToggleFav={toggleFav}/>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      {modal && <Modal mode={modal.mode} drink={modal.drink} bar={bar} onClose={()=>setModal(null)}
+        onSave={saveDrink} onDelete={deleteDrink} onEdit={d=>setModal({mode:"edit",drink:d})} onToggleFav={toggleFav}/>}
+      {classicsModal && <ClassicsModal drinks={drinks} onImport={importClassic} onClose={()=>setClassicsModal(false)} bar={bar}/>}
+    </div>
+  );
+}
+
+// ─── DrinkCard ────────────────────────────────────────────────────────────────
+function DrinkCard({drink,barHas,onView,onToggleFav,highlight}) {
+  const tech = TECHNIQUES.find(t=>t.value===drink.technique);
+  return (
+    <div className="drink-card" style={{...S.card,borderColor:highlight?"#C4922A60":"#E8DCC8"}} onClick={onView}>
+      <div style={{...S.cardBand,background:drink.photo?`url(${drink.photo}) center/cover`:drink.color||"#8C6B4A"}}>
+        <div style={S.cardBandOverlay}/>
+        {barHas && <div style={S.makeableBadge}>✓ Possível</div>}
+        {tech && <div style={S.techBadge}>{tech.emoji} {tech.label}</div>}
+        <div style={S.cardName}>{drink.name}</div>
+        <div style={S.cardCat}>{drink.category}</div>
+      </div>
+      <div style={S.cardBody}>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={S.cardIngs}>{drink.ingredients.slice(0,3).join(" · ")}{drink.ingredients.length>3&&<span style={{color:"#B89A7A"}}> +{drink.ingredients.length-3}</span>}</div>
+          {drink.glass && <div style={S.cardGlass}>🥃 {drink.glass.split("(")[0].trim()}</div>}
+        </div>
+        <div style={S.cardFavs}>
+          <button style={{...S.favBtn,opacity:drink.favFelipe?1:.25}} onClick={e=>{e.stopPropagation();onToggleFav(drink.id,"favFelipe");}}>⭐</button>
+          <button style={{...S.favBtn,opacity:drink.favJoana?1:.25}} onClick={e=>{e.stopPropagation();onToggleFav(drink.id,"favJoana");}}>💛</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ClassicsModal ────────────────────────────────────────────────────────────
+function ClassicsModal({drinks,onImport,onClose,bar}) {
+  const [search,setSearch]=useState("");
+  const [filterTech,setFilterTech]=useState("Todos");
+  const imported=drinks.map(d=>d.name);
+  const filtered=CLASSICS_LIBRARY.filter(d=>{
+    const q=search.toLowerCase();
+    return (!q||d.name.toLowerCase().includes(q)||d.ingredients.some(i=>i.toLowerCase().includes(q)))
+      &&(filterTech==="Todos"||d.technique===filterTech);
+  });
+  return (
+    <div style={S.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={{...S.modalBox,maxWidth:680}} className="modal-scroll">
+        <div style={{padding:"20px 24px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:16,color:"#1C1208",fontWeight:700}}>Biblioteca de Clássicos</div>
+            <div style={{fontSize:12,color:"#9A7A5A",marginTop:2}}>{CLASSICS_LIBRARY.length} drinks · clique para importar</div>
+          </div>
+          <button style={S.modalClose} onClick={onClose}><Ico d={IC.x} size={18} stroke="#9A7A5A" sw="2"/></button>
+        </div>
+        <div style={{padding:"14px 24px 0"}}>
+          <div style={{...S.searchWrap,marginBottom:12}}>
+            <Ico d={IC.search} size={16} stroke="#9A7A5A"/>
+            <input style={S.searchInput} placeholder="Buscar…" value={search} onChange={e=>setSearch(e.target.value)}/>
+          </div>
+          <div style={{...S.chipRow,marginBottom:16}}>
+            {["Todos",...TECHNIQUES.map(t=>t.value)].map(v=>{
+              const t=TECHNIQUES.find(x=>x.value===v);
+              return <button key={v} style={{...S.chip,...(filterTech===v?S.chipActive:{})}} onClick={()=>setFilterTech(v)}>{t?`${t.emoji} ${t.label}`:"Todos"}</button>;
+            })}
+          </div>
+        </div>
+        <div style={{padding:"0 24px 24px",display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(d=>{
+            const alreadyIn=imported.includes(d.name);
+            const canMake=d.ingredients.every(i=>bar.includes(i));
+            const tech=TECHNIQUES.find(t=>t.value===d.technique);
+            return (
+              <div key={d.name} style={{...S.classicRow,borderColor:canMake?"#5AAA7080":"#D4B896"}}>
+                <div style={{width:6,height:"100%",background:d.color,borderRadius:"4px 0 0 4px",position:"absolute",left:0,top:0,bottom:0}}/>
+                <div style={{flex:1,paddingLeft:8,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:3}}>
+                    <span style={{color:"#1C1208",fontSize:14,fontWeight:600}}>{d.name}</span>
+                    {canMake&&<span style={{fontSize:10,color:"#1A6B30",background:"#D4F4DF",padding:"1px 6px",borderRadius:10}}>✓ possível</span>}
+                  </div>
+                  <div style={{fontSize:11,color:"#9A7A5A"}}>{tech&&`${tech.emoji} ${tech.label}`} · 🥃 {d.glass.split("(")[0].trim()} · 🌿 {d.garnish}</div>
+                  <div style={{fontSize:11,color:"#7A5C3A",marginTop:2}}>{d.ingredients.join(" · ")}</div>
+                </div>
+                <button style={{...S.importBtn,...(alreadyIn?{background:"#E8DCC8",color:"#B89A7A",cursor:"default"}:{})}}
+                  onClick={()=>!alreadyIn&&onImport(d)} disabled={alreadyIn}>
+                  {alreadyIn?"✓ importado":"+ importar"}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── BarTab ───────────────────────────────────────────────────────────────────
+function BarTab({bar,setBar}) {
+  const [ingSearch,setIngSearch]=useState("");
+  const [custom,setCustom]=useState("");
+  const filteredList=useMemo(()=>INGREDIENT_LIST.filter(i=>i.toLowerCase().includes(ingSearch.toLowerCase())&&!bar.includes(i)),[ingSearch,bar]);
+  const addCustom=()=>{const v=custom.trim();if(v&&!bar.includes(v)){setBar([...bar,v].sort());setCustom("");}};
+  return (
+    <div>
+      <div style={S.sectionHeader}>
+        <Ico d={IC.bottle} size={18} stroke="#C4922A"/>
+        <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>{bar.length} ingrediente{bar.length!==1?"s":""} no bar</span>
+      </div>
+      <div style={{...S.ingGrid,marginBottom:24}}>
+        {[...bar].sort().map(ing=>(
+          <div key={ing} style={S.barTag}>
+            <span>{ing}</span>
+            <button style={S.barTagRemove} onClick={()=>setBar(bar.filter(i=>i!==ing))}><Ico d={IC.x} size={12} stroke="#C03030" sw="2.5"/></button>
+          </div>
+        ))}
+      </div>
+      <div style={S.divider}/>
+      <div style={{fontSize:11,color:"#9A7A5A",letterSpacing:1,textTransform:"uppercase",margin:"20px 0 12px"}}>Adicionar ao Bar</div>
+      <div style={{display:"flex",gap:8,marginBottom:16}}>
+        <input style={{...S.input,flex:1,marginBottom:0}} placeholder="Ingrediente personalizado…" value={custom} onChange={e=>setCustom(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCustom()}/>
+        <button style={S.addBtn} onClick={addCustom}><Ico d={IC.plus} size={16} stroke="#fff" sw="2.5"/>Adicionar</button>
+      </div>
+      <div style={S.searchWrap}>
+        <Ico d={IC.search} size={16} stroke="#9A7A5A"/>
+        <input style={S.searchInput} placeholder="Buscar ingrediente…" value={ingSearch} onChange={e=>setIngSearch(e.target.value)}/>
+      </div>
+      <div style={{...S.ingGrid,marginTop:12}}>
+        {filteredList.map(ing=>(
+          <button key={ing} style={S.ingTag} onClick={()=>setBar([...bar,ing].sort())}>
+            <Ico d={IC.plus} size={11} stroke="#9A7A5A" sw="2"/>{ing}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+function Modal({mode,drink,bar,onClose,onSave,onDelete,onEdit,onToggleFav}) {
+  const blank={name:"",category:CATEGORIES[0],favFelipe:false,favJoana:false,photo:"",color:COLOR_SWATCHES[0],technique:"shaken",glass:GLASSES[0],garnish:"",ingredients:[""],amounts:[""],instructions:""};
+  const [form,setForm]=useState(drink?{...drink}:blank);
+  const [confirmDel,setConfirmDel]=useState(false);
+  const [garnishInput,setGarnishInput]=useState(form.garnish||"");
+  const [garnishOpen,setGarnishOpen]=useState(false);
+  const isView=mode==="view", isEdit=mode==="edit";
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const addIngRow=()=>setF("ingredients",[...form.ingredients,""]);
+  const setIng=(i,v)=>{const a=[...form.ingredients];a[i]=v;setF("ingredients",a);};
+  const setAmt=(i,v)=>{const a=[...form.amounts];a[i]=v;setF("amounts",a);};
+  const removeIng=(i)=>{setF("ingredients",form.ingredients.filter((_,j)=>j!==i));setF("amounts",form.amounts.filter((_,j)=>j!==i));};
+  const missing=isView&&drink?drink.ingredients.filter(i=>!bar.includes(i)):[];
+  const tech=TECHNIQUES.find(t=>t.value===(isView?drink?.technique:form.technique));
+  return (
+    <div style={S.overlay} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div style={S.modalBox} className="modal-scroll">
+        <div style={S.modalHeader}>
+          {isView&&(
+            <div style={{...S.bandFull,background:form.photo?`url(${form.photo}) center/cover`:form.color}}>
+              <div style={S.bandFullOverlay}/>
+              <div style={S.modalDrinkName}>{form.name}</div>
+              <div style={S.modalDrinkCat}>{form.category}</div>
+            </div>
+          )}
+          {isEdit&&<div style={{padding:"20px 24px 0",fontSize:12,color:"#9A7A5A",letterSpacing:1.5,textTransform:"uppercase"}}>{drink?"Editar Drink":"Novo Drink"}</div>}
+          <button style={S.modalClose} onClick={onClose}><Ico d={IC.x} size={18} stroke="#9A7A5A" sw="2"/></button>
+        </div>
+        <div style={{padding:"0 24px 28px"}}>
+          {isView&&drink&&(
+            <div>
+              <div style={{display:"flex",gap:8,margin:"16px 0 14px"}}>
+                <button style={{...S.favChip,background:drink.favFelipe?"#FFF0D0":"#FFF8EE",border:`1.5px solid ${drink.favFelipe?"#C4922A":"#D4B896"}`,color:drink.favFelipe?"#8A5C18":"#9A7A5A"}} onClick={()=>onToggleFav(drink.id,"favFelipe")}>⭐ Felipe</button>
+                <button style={{...S.favChip,background:drink.favJoana?"#FDEEF4":"#FFF8EE",border:`1.5px solid ${drink.favJoana?"#E48FAB":"#D4B896"}`,color:drink.favJoana?"#9A2060":"#9A7A5A"}} onClick={()=>onToggleFav(drink.id,"favJoana")}>💛 Joana</button>
+              </div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:16}}>
+                {tech&&<div style={S.infoBadge}><span style={{fontSize:16}}>{tech.emoji}</span><div><div style={S.infoBadgeTitle}>{tech.label}</div><div style={S.infoBadgeSub}>{tech.desc}</div></div></div>}
+                {drink.glass&&<div style={S.infoBadge}><span style={{fontSize:16}}>🥃</span><div><div style={S.infoBadgeTitle}>Copo</div><div style={S.infoBadgeSub}>{drink.glass}</div></div></div>}
+                {drink.garnish&&<div style={S.infoBadge}><span style={{fontSize:16}}>🌿</span><div><div style={S.infoBadgeTitle}>Guarnição</div><div style={S.infoBadgeSub}>{drink.garnish}</div></div></div>}
+              </div>
+              {missing.length>0
+                ?<div style={S.missingBanner}><span style={{color:"#C05000"}}>⚠ Faltam: </span>{missing.join(", ")}</div>
+                :<div style={{...S.missingBanner,background:"#E8F5EC",borderColor:"#5AAA70",color:"#1A6B30"}}>✓ Você tem tudo para fazer este drink!</div>
+              }
+              <div style={S.viewSection}>
+                <div style={S.viewLabel}>Ingredientes</div>
+                {drink.ingredients.map((ing,i)=>(
+                  <div key={i} style={S.viewIng}>
+                    <span style={{color:bar.includes(ing)?"#1A8C40":"#C03030",fontSize:8}}>●</span>
+                    <span style={{flex:1}}>{ing}</span>
+                    <span style={{color:"#9A7A5A",fontSize:13}}>{drink.amounts[i]}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={S.viewSection}>
+                <div style={S.viewLabel}>Preparo</div>
+                <div style={{color:"#3A2410",lineHeight:1.75,fontSize:14}}>{drink.instructions}</div>
+              </div>
+              <div style={{display:"flex",gap:10,marginTop:20}}>
+                <button style={S.editBtn} onClick={()=>onEdit(drink)}><Ico d={IC.edit} size={14} stroke="currentColor"/>Editar</button>
+                {!confirmDel
+                  ?<button style={S.delBtn} onClick={()=>setConfirmDel(true)}><Ico d={IC.trash} size={14} stroke="currentColor"/>Excluir</button>
+                  :<button style={{...S.delBtn,background:"#C03030",borderColor:"#C03030",color:"#fff"}} onClick={()=>onDelete(drink.id)}>Confirmar exclusão</button>
+                }
+              </div>
+            </div>
+          )}
+          {isEdit&&(
+            <div style={{paddingTop:16}}>
+              <label style={S.label}>Nome do Drink</label>
+              <input style={S.input} value={form.name} onChange={e=>setF("name",e.target.value)} placeholder="Ex: Negroni"/>
+              <label style={S.label}>Categoria</label>
+              <div style={{...S.chipRow,marginBottom:16}}>
+                {CATEGORIES.map(c=><button key={c} style={{...S.chip,...(form.category===c?S.chipActive:{})}} onClick={()=>setF("category",c)}>{c}</button>)}
+              </div>
+              <label style={S.label}>Técnica de Preparo</label>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+                {TECHNIQUES.map(t=>(
+                  <button key={t.value} style={{...S.techChip,...(form.technique===t.value?S.techChipActive:{})}} onClick={()=>setF("technique",t.value)}>
+                    <span style={{fontSize:18}}>{t.emoji}</span>
+                    <div><div style={{fontSize:12,fontWeight:form.technique===t.value?700:400,color:"#1C1208"}}>{t.label}</div><div style={{fontSize:10,color:"#9A7A5A"}}>{t.desc}</div></div>
+                  </button>
+                ))}
+              </div>
+              <label style={S.label}>Tipo de Copo</label>
+              <select style={{...S.input,cursor:"pointer"}} value={form.glass} onChange={e=>setF("glass",e.target.value)}>
+                <option value="">Selecione…</option>
+                {GLASSES.map(g=><option key={g} value={g}>{g}</option>)}
+              </select>
+              <label style={S.label}>Guarnição</label>
+              <div style={{position:"relative",marginBottom:14}}>
+                <input style={{...S.input,marginBottom:0}} value={garnishInput}
+                  onChange={e=>{setGarnishInput(e.target.value);setF("garnish",e.target.value);setGarnishOpen(true);}}
+                  onFocus={()=>setGarnishOpen(true)} onBlur={()=>setTimeout(()=>setGarnishOpen(false),150)}
+                  placeholder="Ex: Twist de Laranja"/>
+                {garnishOpen&&(
+                  <div style={S.autocomplete}>
+                    {GARNISHES_COMMON.filter(g=>g.toLowerCase().includes(garnishInput.toLowerCase())).map(g=>(
+                      <div key={g} className="ac-item" style={S.autocompleteItem} onMouseDown={()=>{setGarnishInput(g);setF("garnish",g);setGarnishOpen(false);}}>{g}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <label style={S.label}>Foto (URL)</label>
+              <input style={S.input} value={form.photo} onChange={e=>setF("photo",e.target.value)} placeholder="https://…"/>
+              {!form.photo&&(
+                <>
+                  <label style={S.label}>Cor de Fundo</label>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+                    {COLOR_SWATCHES.map(c=><button key={c} onClick={()=>setF("color",c)} style={{width:28,height:28,borderRadius:"50%",background:c,border:form.color===c?"2.5px solid #C4922A":"2.5px solid transparent",cursor:"pointer"}}/>)}
+                  </div>
+                </>
+              )}
+              <label style={S.label}>Favoritos</label>
+              <div style={{display:"flex",gap:8,marginBottom:16}}>
+                <button style={{...S.favChip,background:form.favFelipe?"#FFF0D0":"#FFF8EE",border:`1.5px solid ${form.favFelipe?"#C4922A":"#D4B896"}`,color:form.favFelipe?"#8A5C18":"#9A7A5A"}} onClick={()=>setF("favFelipe",!form.favFelipe)}>⭐ Felipe</button>
+                <button style={{...S.favChip,background:form.favJoana?"#FDEEF4":"#FFF8EE",border:`1.5px solid ${form.favJoana?"#E48FAB":"#D4B896"}`,color:form.favJoana?"#9A2060":"#9A7A5A"}} onClick={()=>setF("favJoana",!form.favJoana)}>💛 Joana</button>
+              </div>
+              <label style={S.label}>Ingredientes</label>
+              {form.ingredients.map((ing,i)=>(
+                <div key={i} style={{display:"flex",gap:8,marginBottom:8}}>
+                  <IngAC value={ing} onChange={v=>setIng(i,v)}/>
+                  <input style={{...S.input,width:80,marginBottom:0,flexShrink:0}} value={form.amounts[i]||""} onChange={e=>setAmt(i,e.target.value)} placeholder="Qtd"/>
+                  {form.ingredients.length>1&&<button style={S.removeBtn} onClick={()=>removeIng(i)}><Ico d={IC.x} size={14} stroke="#C03030" sw="2.5"/></button>}
+                </div>
+              ))}
+              <button style={S.ghostBtn} onClick={addIngRow}><Ico d={IC.plus} size={14} stroke="#9A7A5A"/>Adicionar ingrediente</button>
+              <label style={{...S.label,marginTop:16}}>Modo de Preparo</label>
+              <textarea style={{...S.input,minHeight:90,resize:"vertical"}} value={form.instructions} onChange={e=>setF("instructions",e.target.value)} placeholder="Descreva o preparo…"/>
+              <button style={{...S.addBtn,width:"100%",justifyContent:"center",marginTop:8,padding:"12px",fontSize:14}} onClick={()=>form.name.trim()&&onSave(form)}>
+                <Ico d={IC.check} size={16} stroke="#fff" sw="2.5"/>Salvar Drink
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── IngAC ────────────────────────────────────────────────────────────────────
+function IngAC({value,onChange}) {
+  const [open,setOpen]=useState(false);
+  const sugs=useMemo(()=>value.length>1?INGREDIENT_LIST.filter(i=>i.toLowerCase().includes(value.toLowerCase())).slice(0,6):[],[value]);
+  return (
+    <div style={{flex:1,position:"relative"}}>
+      <input style={{...S.input,marginBottom:0}} value={value}
+        onChange={e=>{onChange(e.target.value);setOpen(true);}}
+        onFocus={()=>setOpen(true)} onBlur={()=>setTimeout(()=>setOpen(false),150)} placeholder="Ingrediente"/>
+      {open&&sugs.length>0&&(
+        <div style={S.autocomplete}>
+          {sugs.map(s=><div key={s} className="ac-item" style={S.autocompleteItem} onMouseDown={()=>{onChange(s);setOpen(false);}}>{s}</div>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
