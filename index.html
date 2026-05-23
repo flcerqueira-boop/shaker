@@ -18,8 +18,6 @@
   button:active{opacity:.8;}
   .ac-item:hover{background:#FFF0D0;}
   @media(max-width:560px){.drink-card{min-width:0;}}
-  @media(max-width:640px){.nav-label{display:none;}}
-  @media(min-width:641px){.nav-label{display:inline;}}
   .loading{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px;}
   .loading-text{color:#9A7A5A;font-size:14px;letter-spacing:2px;text-transform:uppercase;}
   .spinner{width:32px;height:32px;border:2px solid #D4B896;border-top-color:#C4922A;border-radius:50%;animation:spin .8s linear infinite;}
@@ -177,14 +175,14 @@ const IC = {
 const S = {
   root:{minHeight:"100vh",background:"#F5F0E8",color:"#1C1208",fontFamily:"'Georgia',serif"},
   header:{background:"#2C1A08",borderBottom:"3px solid #C4922A",position:"sticky",top:0,zIndex:50},
-  headerInner:{maxWidth:960,margin:"0 auto",padding:"0 12px",display:"flex",alignItems:"center",justifyContent:"space-between",height:64},
-  logo:{display:"flex",alignItems:"center",gap:12},
-  logoMark:{fontSize:26,color:"#C4922A",lineHeight:1},
-  logoTitle:{fontSize:18,letterSpacing:5,color:"#F5F0E8",lineHeight:1},
-  logoSub:{fontSize:9,letterSpacing:1.5,color:"#A08060",marginTop:3},
-  nav:{display:"flex",gap:2},
-  navBtn:{display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:8,border:"1px solid transparent",background:"transparent",color:"#A08060",cursor:"pointer",fontSize:13,fontFamily:"'Georgia',serif"},
-  navBtnActive:{background:"#3D2610",color:"#C4922A",border:"1px solid #5A3A18"},
+  headerInner:{maxWidth:960,margin:"0 auto",padding:"0 20px",display:"flex",flexDirection:"column",alignItems:"stretch",height:"auto"},
+  logo:{display:"flex",alignItems:"center",gap:12,padding:"12px 0 10px"},
+  logoMark:{fontSize:26,color:"#C4922A",lineHeight:1,flexShrink:0},
+  logoTitle:{fontSize:18,letterSpacing:5,color:"#F5F0E8",lineHeight:1,flexShrink:0},
+  logoSub:{fontSize:11,letterSpacing:1.5,color:"#A08060",marginLeft:8,alignSelf:"flex-end",paddingBottom:1},
+  nav:{display:"flex",gap:0,borderTop:"1px solid #3D2610"},
+  navBtn:{flex:1,display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"8px 4px",borderRadius:0,border:"none",borderTop:"2px solid transparent",background:"transparent",color:"#A08060",cursor:"pointer",fontSize:12,fontFamily:"'Georgia',serif"},
+  navBtnActive:{background:"transparent",color:"#C4922A",borderTop:"2px solid #C4922A"},
   navLabel:{display:"inline"},
   main:{maxWidth:960,margin:"0 auto",padding:"24px 20px 60px"},
   toolbar:{display:"flex",gap:10,marginBottom:16,alignItems:"center"},
@@ -320,16 +318,14 @@ function App() {
         <div style={S.headerInner}>
           <div style={S.logo}>
             <span style={S.logoMark}>⟡</span>
-            <div>
-              <div style={S.logoTitle}>SHAKER</div>
-              <div style={S.logoSub}>Cocktail Collection — Felipe Cerqueira</div>
-            </div>
+            <div style={S.logoTitle}>SHAKER</div>
+            <div style={S.logoSub}>Cocktail Collection — Felipe Cerqueira</div>
           </div>
           <nav style={S.nav}>
             {tabs.map((t,i) => (
               <button key={i} style={{...S.navBtn,...(tab===i?S.navBtnActive:{})}} onClick={()=>setTab(i)}>
-                <Ico d={t.icon} size={15} stroke={tab===i?"#C4922A":"#A08060"} sw="2"/>
-                <span className="nav-label">{t.label}</span>
+                <Ico d={t.icon} size={14} stroke={tab===i?"#C4922A":"#A08060"} sw="2"/>
+                <span>{t.label}</span>
               </button>
             ))}
           </nav>
