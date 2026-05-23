@@ -307,8 +307,7 @@ function App() {
 
   const makeable = useMemo(() => drinks.filter(d => d.ingredients.every(i => bar.includes(i))), [drinks, bar]);
 
-  const [surpriseModal, setSurpriseModal] = useState(false);
-  const tabs = [{label:"Drinks",icon:IC.magic},{label:"Meu Bar",icon:IC.bottle},{label:"Fazer Agora",icon:IC.check},{label:"Surpreenda",icon:IC.dice}];
+  const tabs = [{label:"Drinks",icon:IC.magic},{label:"Meu Bar",icon:IC.bottle},{label:"Fazer Agora",icon:IC.check},{label:"Roleta",icon:IC.dice}];
 
   if (!loaded) return <div className="loading"><div className="spinner"></div><div className="loading-text">Carregando...</div></div>;
 
@@ -416,11 +415,14 @@ function App() {
 
         {tab===2 && (
           <div>
-            <div style={S.sectionHeader}>
-              <Ico d={IC.magic} size={18} stroke="#C4922A"/>
-              <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>
-                {makeable.length} drink{makeable.length!==1?"s":""} possíveis com o seu bar
-              </span>
+            <div style={{...S.sectionHeader,justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <Ico d={IC.magic} size={18} stroke="#C4922A"/>
+                <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>
+                  {makeable.length} drink{makeable.length!==1?"s":""} possíveis com o seu bar
+                </span>
+              </div>
+              <CopyBtn text={makeable.map(d=>d.name).join(", ")} label="📋 Copiar Drinks" disabled={makeable.length===0}/>
             </div>
             {makeable.length===0 ? (
               <div style={S.empty}>
@@ -439,7 +441,7 @@ function App() {
           </div>
         )}
 
-        {tab===3 && <SurpriseTab drinks={drinks} bar={bar} makeable={makeable} onViewDrink={d=>setModal({mode:"view",drink:d})}/>}
+        {tab===3 && <RouletteTab makeable={makeable} onViewDrink={d=>setModal({mode:"view",drink:d})}/>}
       </main>
 
       {modal && <Modal mode={modal.mode} drink={modal.drink} bar={bar} onClose={()=>setModal(null)}
@@ -450,15 +452,39 @@ function App() {
 }
 
 
-// ─── SurpriseTab ──────────────────────────────────────────────────────────────
-function SurpriseTab({drinks, bar, makeable, onViewDrink}) {
+// ─── CopyBtn ──────────────────────────────────────────────────────────────────
+function CopyBtn({text, label, disabled}) {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    if (!text || disabled) return;
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button onClick={copy} disabled={disabled} style={{
+      display:"inline-flex",alignItems:"center",gap:6,
+      padding:"6px 14px",borderRadius:20,border:"1.5px solid",
+      background: copied ? "#E8F5EC" : "#FFF8EE",
+      borderColor: copied ? "#5AAA70" : "#C4922A",
+      color: copied ? "#1A6B30" : "#8A5C18",
+      cursor: disabled ? "default" : "pointer",
+      fontSize:12,fontFamily:"'Georgia',serif",fontWeight:600,
+      opacity: disabled ? .4 : 1,
+      whiteSpace:"nowrap",
+      transition:"all .2s",
+    }}>
+      {copied ? "✓ Copiado!" : label}
+    </button>
+  );
+}
+
+// ─── RouletteTab ─────────────────────────────────────────────────────────────
+function RouletteTab({makeable, onViewDrink}) {
   const [spinning, setSpinning] = useState(false);
   const [rouletteDrink, setRouletteDrink] = useState(null);
   const [spinAngle, setSpinAngle] = useState(0);
-  const [aiInput, setAiInput] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiResult, setAiResult] = useState(null);
-  const [aiError, setAiError] = useState("");
 
   const spinRoulette = () => {
     if (spinning || makeable.length === 0) return;
@@ -467,151 +493,54 @@ function SurpriseTab({drinks, bar, makeable, onViewDrink}) {
     const picked = makeable[Math.floor(Math.random() * makeable.length)];
     const newAngle = spinAngle + 1440 + Math.floor(Math.random() * 360);
     setSpinAngle(newAngle);
-    setTimeout(() => {
-      setRouletteDrink(picked);
-      setSpinning(false);
-    }, 1800);
+    setTimeout(() => { setRouletteDrink(picked); setSpinning(false); }, 1800);
   };
-
-  const askAI = async () => {
-    if (!aiInput.trim() || aiLoading) return;
-    setAiLoading(true);
-    setAiResult(null);
-    setAiError("");
-    try {
-      const drinkList = drinks.map(d => ({
-        name: d.name,
-        category: d.category,
-        technique: d.technique,
-        ingredients: d.ingredients,
-        canMake: d.ingredients.every(i => bar.includes(i)),
-      }));
-      const prompt = `Você é um bartender especialista. O usuário tem os seguintes drinks no catálogo:
-
-${JSON.stringify(drinkList, null, 2)}
-
-O usuário disse: "${aiInput.trim()}"
-
-Com base nisso, sugira O MELHOR drink do catálogo para o momento. Considere o contexto (comida, clima, humor) e PRIORIZE drinks que o usuário pode fazer agora (canMake: true).
-
-Responda APENAS em JSON neste formato exato, sem markdown, sem texto extra:
-{"name":"Nome do drink","reason":"Explicação em 2 frases de por que este drink combina com o momento."}`;
-
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 300,
-          messages: [{role:"user", content: prompt}]
-        })
-      });
-      const data = await resp.json();
-      const text = data.content[0].text.trim();
-      const parsed = JSON.parse(text);
-      const found = drinks.find(d => d.name.toLowerCase() === parsed.name.toLowerCase());
-      setAiResult({ drink: found || null, name: parsed.name, reason: parsed.reason });
-    } catch(e) {
-      setAiError("Não consegui conectar à IA. Tente novamente.");
-    }
-    setAiLoading(false);
-  };
-
-  const spinColor = rouletteDrink ? rouletteDrink.color || "#C4922A" : "#C4922A";
 
   return (
-    <div>
-      {/* ── ROLETA ── */}
-      <div style={{background:"#fff",border:"1.5px solid #E8DCC8",borderRadius:16,padding:28,marginBottom:20,textAlign:"center",boxShadow:"0 2px 8px rgba(44,26,8,.06)"}}>
-        <div style={{fontSize:11,letterSpacing:2,color:"#9A7A5A",textTransform:"uppercase",marginBottom:20}}>Roleta de Drinks</div>
-
-        {/* Wheel visual */}
-        <div style={{position:"relative",width:160,height:160,margin:"0 auto 24px"}} onClick={spinRoulette}>
-          <div style={{
-            width:160, height:160, borderRadius:"50%",
-            background: spinning ? "conic-gradient(#C4922A,#E8DCC8,#C4922A,#F5F0E8,#C4922A,#D4B896,#C4922A)" : (rouletteDrink ? rouletteDrink.color||"#C4922A" : "#F5F0E8"),
-            border:"3px solid #C4922A",
-            transform:`rotate(${spinAngle}deg)`,
-            transition: spinning ? "transform 1.8s cubic-bezier(.17,.67,.12,1)" : "none",
-            cursor: makeable.length>0 ? "pointer" : "default",
-            display:"flex", alignItems:"center", justifyContent:"center",
-            boxShadow:"0 4px 20px rgba(196,146,42,.2)",
-          }}>
-            {!spinning && !rouletteDrink && <span style={{fontSize:40}}>🎰</span>}
-            {spinning && <span style={{fontSize:32,opacity:.6}}>🌀</span>}
-          </div>
-          {/* Pointer */}
-          <div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",fontSize:20,filter:"drop-shadow(0 2px 2px rgba(0,0,0,.2))"}}>▼</div>
+    <div style={{background:"#fff",border:"1.5px solid #E8DCC8",borderRadius:16,padding:28,textAlign:"center",boxShadow:"0 2px 8px rgba(44,26,8,.06)"}}>
+      <div style={{fontSize:11,letterSpacing:2,color:"#9A7A5A",textTransform:"uppercase",marginBottom:20}}>Roleta de Drinks</div>
+      <div style={{position:"relative",width:160,height:160,margin:"0 auto 24px"}} onClick={spinRoulette}>
+        <div style={{
+          width:160, height:160, borderRadius:"50%",
+          background: spinning ? "conic-gradient(#C4922A,#E8DCC8,#C4922A,#F5F0E8,#C4922A,#D4B896,#C4922A)" : (rouletteDrink ? rouletteDrink.color||"#C4922A" : "#F5F0E8"),
+          border:"3px solid #C4922A",
+          transform:`rotate(${spinAngle}deg)`,
+          transition: spinning ? "transform 1.8s cubic-bezier(.17,.67,.12,1)" : "none",
+          cursor: makeable.length>0 ? "pointer" : "default",
+          display:"flex", alignItems:"center", justifyContent:"center",
+          boxShadow:"0 4px 20px rgba(196,146,42,.2)",
+        }}>
+          {!spinning && !rouletteDrink && <span style={{fontSize:40}}>🎰</span>}
+          {spinning && <span style={{fontSize:32,opacity:.6}}>🌀</span>}
         </div>
-
-        {makeable.length === 0 ? (
-          <div style={{color:"#9A7A5A",fontSize:13}}>Adicione ingredientes no Meu Bar para usar a roleta</div>
-        ) : !spinning && !rouletteDrink ? (
-          <div>
-            <div style={{color:"#9A7A5A",fontSize:13,marginBottom:16}}>Gira entre {makeable.length} drink{makeable.length!==1?"s":""} possíveis</div>
-            <button style={{...S_surprise.bigBtn}} onClick={spinRoulette}>🎰 Girar Roleta</button>
-          </div>
-        ) : spinning ? (
-          <div style={{color:"#C4922A",fontSize:14,fontWeight:600,letterSpacing:1}}>Girando…</div>
-        ) : rouletteDrink ? (
-          <div>
-            <div style={{fontSize:11,color:"#9A7A5A",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Seu drink é</div>
-            <div style={{fontSize:22,fontWeight:700,color:"#2C1A08",marginBottom:4}}>{rouletteDrink.name}</div>
-            <div style={{fontSize:12,color:"#9A7A5A",marginBottom:16}}>{rouletteDrink.category} · {TECHNIQUES.find(t=>t.value===rouletteDrink.technique)?.emoji} {TECHNIQUES.find(t=>t.value===rouletteDrink.technique)?.label}</div>
-            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
-              <button style={S_surprise.bigBtn} onClick={()=>onViewDrink(rouletteDrink)}>Ver Receita</button>
-              <button style={{...S_surprise.bigBtn,background:"#FFF8EE",color:"#8A5C18",border:"1.5px solid #C4922A"}} onClick={spinRoulette}>🎰 Girar de Novo</button>
-            </div>
-          </div>
-        ) : null}
+        <div style={{position:"absolute",top:-10,left:"50%",transform:"translateX(-50%)",fontSize:20,filter:"drop-shadow(0 2px 2px rgba(0,0,0,.2))"}}>▼</div>
       </div>
 
-      {/* ── SUGESTÃO POR IA ── */}
-      <div style={{background:"#fff",border:"1.5px solid #E8DCC8",borderRadius:16,padding:28,boxShadow:"0 2px 8px rgba(44,26,8,.06)"}}>
-        <div style={{fontSize:11,letterSpacing:2,color:"#9A7A5A",textTransform:"uppercase",marginBottom:8}}>Sugestão por IA</div>
-        <div style={{fontSize:13,color:"#7A5C3A",marginBottom:16}}>Diga o que vai comer, como está o clima ou como você está se sentindo — a IA sugere o drink ideal do seu catálogo.</div>
-
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <input
-            style={{...S.input,flex:1,marginBottom:0}}
-            placeholder="Ex: vou comer churrasco, dia quente, estou animado…"
-            value={aiInput}
-            onChange={e=>setAiInput(e.target.value)}
-            onKeyDown={e=>e.key==="Enter"&&askAI()}
-          />
-          <button style={{...S_surprise.bigBtn,whiteSpace:"nowrap",flexShrink:0}} onClick={askAI} disabled={aiLoading||!aiInput.trim()}>
-            {aiLoading ? "⏳" : "✨ Sugerir"}
-          </button>
+      {makeable.length === 0 ? (
+        <div style={{color:"#9A7A5A",fontSize:13}}>Adicione ingredientes no Meu Bar para usar a roleta</div>
+      ) : !spinning && !rouletteDrink ? (
+        <div>
+          <div style={{color:"#9A7A5A",fontSize:13,marginBottom:16}}>Gira entre {makeable.length} drink{makeable.length!==1?"s":""} possíveis</div>
+          <button style={Sb.btn} onClick={spinRoulette}>🎰 Girar Roleta</button>
         </div>
-
-        {aiLoading && (
-          <div style={{display:"flex",alignItems:"center",gap:10,color:"#9A7A5A",fontSize:13,padding:"12px 0"}}>
-            <div className="spinner" style={{width:18,height:18,borderWidth:2}}></div>
-            Consultando o bartender IA…
+      ) : spinning ? (
+        <div style={{color:"#C4922A",fontSize:14,fontWeight:600,letterSpacing:1}}>Girando…</div>
+      ) : rouletteDrink ? (
+        <div>
+          <div style={{fontSize:11,color:"#9A7A5A",letterSpacing:1.5,textTransform:"uppercase",marginBottom:6}}>Seu drink é</div>
+          <div style={{fontSize:22,fontWeight:700,color:"#2C1A08",marginBottom:4}}>{rouletteDrink.name}</div>
+          <div style={{fontSize:12,color:"#9A7A5A",marginBottom:16}}>{rouletteDrink.category} · {TECHNIQUES.find(t=>t.value===rouletteDrink.technique)?.emoji} {TECHNIQUES.find(t=>t.value===rouletteDrink.technique)?.label}</div>
+          <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+            <button style={Sb.btn} onClick={()=>onViewDrink(rouletteDrink)}>Ver Receita</button>
+            <button style={{...Sb.btn,background:"#FFF8EE",color:"#8A5C18",border:"1.5px solid #C4922A"}} onClick={spinRoulette}>🎰 Girar de Novo</button>
           </div>
-        )}
-
-        {aiError && <div style={{color:"#C03030",fontSize:13,padding:"8px 0"}}>{aiError}</div>}
-
-        {aiResult && (
-          <div style={{background:"#FFF8EE",border:"1.5px solid #C4922A",borderRadius:12,padding:20,marginTop:4}}>
-            <div style={{fontSize:11,color:"#9A7A5A",letterSpacing:1.5,textTransform:"uppercase",marginBottom:8}}>Sugestão da IA</div>
-            <div style={{fontSize:20,fontWeight:700,color:"#2C1A08",marginBottom:8}}>{aiResult.name}</div>
-            <div style={{fontSize:14,color:"#3A2410",lineHeight:1.65,marginBottom:16}}>{aiResult.reason}</div>
-            {aiResult.drink ? (
-              <button style={S_surprise.bigBtn} onClick={()=>onViewDrink(aiResult.drink)}>Ver Receita Completa</button>
-            ) : (
-              <div style={{fontSize:12,color:"#9A7A5A"}}>Este drink não está no seu catálogo ainda.</div>
-            )}
-          </div>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
-
-const S_surprise = {
-  bigBtn: {display:"inline-flex",alignItems:"center",gap:8,padding:"10px 20px",background:"#C4922A",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"'Georgia',serif"},
+const Sb = {
+  btn: {display:"inline-flex",alignItems:"center",gap:8,padding:"10px 20px",background:"#C4922A",color:"#fff",border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"'Georgia',serif"},
 };
 
 // ─── DrinkCard ────────────────────────────────────────────────────────────────
@@ -709,9 +638,12 @@ function BarTab({bar,setBar}) {
   const addCustom=()=>{const v=custom.trim();if(v&&!bar.includes(v)){setBar([...bar,v].sort());setCustom("");}};
   return (
     <div>
-      <div style={S.sectionHeader}>
-        <Ico d={IC.bottle} size={18} stroke="#C4922A"/>
-        <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>{bar.length} ingrediente{bar.length!==1?"s":""} no bar</span>
+      <div style={{...S.sectionHeader,justifyContent:"space-between"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <Ico d={IC.bottle} size={18} stroke="#C4922A"/>
+          <span style={{color:"#8A5C18",fontSize:13,letterSpacing:1.5,textTransform:"uppercase"}}>{bar.length} ingrediente{bar.length!==1?"s":""} no bar</span>
+        </div>
+        <CopyBtn text={[...bar].sort().join(", ")} label="📋 Copiar Lista"/>
       </div>
       <div style={{...S.ingGrid,marginBottom:24}}>
         {[...bar].sort().map(ing=>(
