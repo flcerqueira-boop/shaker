@@ -4,6 +4,10 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>SHAKER — Felipe Cerqueira</title>
+<link rel="icon" type="image/png" href="icon.png"/>
+<link rel="apple-touch-icon" href="icon.png"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-title" content="Shaker"/>
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
   body{background:#F5F0E8;color:#1C1208;font-family:'Georgia',serif;min-height:100vh;}
@@ -169,6 +173,7 @@ const IC = {
   magic:  <><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8L19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2L19 5"/><path d="M3 21l9-9"/><path d="M12.2 6.2L11 5"/></>,
   filter: <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>,
   book:   <><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></>,
+  share:  <><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></>,
   dice:   "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z",
 };
 
@@ -246,6 +251,31 @@ const S = {
   autocompleteItem:{padding:"9px 14px",fontSize:13,cursor:"pointer",color:"#1C1208",fontFamily:"'Georgia',serif"},
 };
 
+// ─── ShareBtn ─────────────────────────────────────────────────────────────────
+function ShareBtn() {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    const url = window.location.origin + window.location.pathname + "?modo=visitante";
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button onClick={copy} title="Copiar link de visitante" style={{
+      background:"none", border:"none", cursor:"pointer",
+      padding:"6px", borderRadius:8, display:"flex", alignItems:"center",
+      color: copied ? "#C4922A" : "#5A3A18",
+      transition:"color .2s",
+    }}>
+      {copied
+        ? <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="#C4922A" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        : <Ico d={IC.share} size={16} stroke="#5A3A18" sw="1.8"/>
+      }
+    </button>
+  );
+}
+
 // ─── App ──────────────────────────────────────────────────────────────────────
 function App() {
   const [tab, setTab] = useState(0);
@@ -318,10 +348,13 @@ function App() {
     <div style={S.root}>
       <header style={S.header}>
         <div style={S.headerInner}>
-          <div style={S.logo}>
-            <span style={S.logoMark}>⟡</span>
-            <div style={S.logoTitle}>SHAKER</div>
-            <div style={S.logoSub}>Cocktail Collection — Felipe Cerqueira</div>
+          <div style={{...S.logo, justifyContent:"space-between"}}>
+            <div style={{display:"flex",alignItems:"center",gap:12}}>
+              <span style={S.logoMark}>⟡</span>
+              <div style={S.logoTitle}>SHAKER</div>
+              <div style={S.logoSub}>Cocktail Collection — Felipe Cerqueira</div>
+            </div>
+            {!GUEST_MODE && <ShareBtn/>}
           </div>
           <nav style={S.nav}>
             {tabs.map((t,i) => (
